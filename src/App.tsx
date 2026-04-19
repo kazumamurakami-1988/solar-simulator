@@ -3,71 +3,81 @@ import { useState, useEffect } from 'react'
 type Step = 'start' | 'q1' | 'q2' | 'q3' | 'q4' | 'q5' | 'result'
 
 interface Answers {
-  area: string
-  electricBill: string
-  roofDirection: string
-  kw: string
-  battery: string
+  panelKw: string
+  batteryKwh: string
+  annualGen: string
+  monthlyBill: string
+  selfConsume: string
 }
 
-const AREAS = ['福岡県', '佐賀県', '熊本県', '長崎県', '大分県', '宮崎県', '鹿児島県']
-
-const AREA_FACTOR: Record<string, number> = {
-  '福岡県': 1.00, '佐賀県': 1.03, '熊本県': 1.05,
-  '長崎県': 1.02, '大分県': 0.98, '宮崎県': 1.10, '鹿児島県': 1.08,
+const DEFAULT_ANSWERS: Answers = {
+  panelKw: '',
+  batteryKwh: '',
+  annualGen: '',
+  monthlyBill: '',
+  selfConsume: '100',
 }
-const DIRECTION_FACTOR: Record<string, number> = {
-  '西': 0.85, '南西': 0.93, '南': 1.00, '東南': 0.93, '東': 0.85,
-}
-const BILL_MONTHLY: Record<string, number> = {
-  '1万円': 10000, '1.5万円': 15000, '2万円以上': 20000,
-}
-const KW_VALUE:      Record<string, number> = { '3kW': 3, '6kW': 6, '9kW': 9 }
-const BATTERY_KWH:   Record<string, number> = { 'なし': 0, '5kWh': 5, '10kWh': 10, '15kWh': 15 }
 
 const BUY_PRICE = 30
 const FIT_1_4   = 24
 const FIT_5_10  = 8.3
 const FIT_11_30 = 7
-const SOLAR_SELF = 100
+
+interface YearRow {
+  year: number
+  annualSaving: number
+  cumReduction: number
+  cumSell: number
+  cumTotal: number
+}
 
 interface CalcResult {
-  monthlyBill: number; afterBill: number
+  monthlyBillNum: number; afterBill: number
   monthlyReduction: number; monthlyIncome: number
   monthlySaving: number; annualSaving: number
-  savings30: number; annualGen: number; selfTotal: number
+  savings30: number; annualGenNum: number; selfTotal: number
+  monthlySell: number; yearRows: YearRow[]
 }
 
 function calcResult(answers: Answers): CalcResult {
-  const monthlyBill = BILL_MONTHLY[answers.electricBill] ?? 15000
-  const kw          = KW_VALUE[answers.kw] ?? 6
-  const batteryKwh  = BATTERY_KWH[answers.battery] ?? 0
-  const areaF       = AREA_FACTOR[answers.area] ?? 1.0
-  const dirF        = DIRECTION_FACTOR[answers.roofDirection] ?? 1.0
+  const monthlyBillNum = parseFloat(answers.monthlyBill) || 14000
+  const batteryKwhNum  = parseFloat(answers.batteryKwh)  || 0
+  const annualGenNum   = parseFloat(answers.annualGen)   || 8862
+  const selfConsumeNum = parseFloat(answers.selfConsume) || 100
 
-  const annualGen  = Math.round(kw * 1000 * areaF * dirF)
-  const monthlyGen = annualGen / 12
-
-  const batterySelf = batteryKwh * 30
-  const selfTotal   = SOLAR_SELF + batterySelf
-
+  const monthlyGen       = annualGenNum / 12
+  const selfTotal        = selfConsumeNum + batteryKwhNum * 30
   const monthlyReduction = Math.round(selfTotal * BUY_PRICE)
-  const afterBill        = Math.max(monthlyBill - monthlyReduction, 0)
+  const afterBill        = Math.max(monthlyBillNum - monthlyReduction, 0)
+  const monthlySell      = Math.max(monthlyGen - selfTotal, 0)
+  const monthlyIncome    = Math.round(monthlySell * FIT_1_4)
 
-  const monthlySell   = Math.max(monthlyGen - selfTotal, 0)
-  const monthlyIncome = Math.round(monthlySell * FIT_1_4)
+  const cumSell = (yr: number) =>
+    Math.round(
+      Math.min(yr, 4)                    * 12 * monthlySell * FIT_1_4   +
+      Math.max(0, Math.min(yr, 10) - 4)  * 12 * monthlySell * FIT_5_10  +
+      Math.max(0, Math.min(yr, 30) - 10) * 12 * monthlySell * FIT_11_30
+    )
 
-  const sellIncome30 = Math.round(
-    monthlySell * FIT_1_4   * 48  +
-    monthlySell * FIT_5_10  * 72  +
-    monthlySell * FIT_11_30 * 240
-  )
-  const savings30    = monthlyReduction * 360 + sellIncome30
-  const annualSaving = monthlyReduction * 12 + monthlyIncome * 12
+  const annualSavingForYear = (yr: number) => {
+    const rate = yr <= 4 ? FIT_1_4 : yr <= 10 ? FIT_5_10 : FIT_11_30
+    return Math.round(monthlyReduction * 12 + monthlySell * rate * 12)
+  }
 
-  return { monthlyBill, afterBill, monthlyReduction, monthlyIncome,
-           monthlySaving: monthlyReduction + monthlyIncome,
-           annualSaving, savings30, annualGen, selfTotal }
+  const targetYears = [1,2,3,4,5,6,7,8,9,10,20,30]
+  const yearRows: YearRow[] = targetYears.map(yr => {
+    const cumRed = monthlyReduction * 12 * yr
+    const cumS   = cumSell(yr)
+    return { year: yr, annualSaving: annualSavingForYear(yr), cumReduction: cumRed, cumSell: cumS, cumTotal: cumRed + cumS }
+  })
+
+  return {
+    monthlyBillNum, afterBill, monthlyReduction, monthlyIncome,
+    monthlySaving: monthlyReduction + monthlyIncome,
+    annualSaving: annualSavingForYear(1),
+    savings30: yearRows[yearRows.length - 1].cumTotal,
+    annualGenNum, selfTotal, monthlySell, yearRows,
+  }
 }
 
 // ── hooks ──────────────────────────────────────────────────────────────
@@ -94,11 +104,11 @@ const Q_STEPS: Step[] = ['q1', 'q2', 'q3', 'q4', 'q5']
 function ProgressBar({ step }: { step: Step }) {
   const idx = Q_STEPS.indexOf(step)
   if (idx === -1) return null
-  const pct = ((idx + 1) / 5) * 100
+  const pct = ((idx + 1) / Q_STEPS.length) * 100
   return (
     <div className="px-4 pt-4 pb-1">
       <div className="flex justify-between text-xs text-gray-400 mb-1.5">
-        <span>質問 {idx + 1} / 5</span>
+        <span>項目 {idx + 1} / {Q_STEPS.length}</span>
         <span>{Math.round(pct)}%</span>
       </div>
       <div className="w-full bg-gray-200 rounded-full h-1.5">
@@ -118,14 +128,14 @@ function BackButton({ onClick }: { onClick: () => void }) {
   )
 }
 
-function NextBtn({ active, onClick, label = '次の質問へ →' }: {
+function NextBtn({ active, onClick, label = '次へ →' }: {
   active: boolean; onClick: () => void; label?: string
 }) {
   return (
     <button onClick={onClick} disabled={!active}
       className={`w-full py-4 rounded-xl font-bold text-base transition-all mt-5 ${
         active
-          ? 'bg-black hover:bg-gray-800 text-white shadow-md active:scale-[0.98]'
+          ? 'text-white shadow-md active:scale-[0.98] bg-[#1C3B44] hover:bg-[#162e35]'
           : 'bg-gray-100 text-gray-300 cursor-not-allowed'
       }`}>
       {label}
@@ -133,38 +143,13 @@ function NextBtn({ active, onClick, label = '次の質問へ →' }: {
   )
 }
 
-function BigCard({ label, desc, icon, selected, onClick, badge }: {
-  label: string; desc?: string; icon?: string; selected: boolean; onClick: () => void; badge?: string
-}) {
-  return (
-    <button onClick={onClick}
-      className={`w-full text-left px-4 py-4 rounded-xl border-2 transition-all duration-150 flex items-center gap-3 relative active:scale-[0.98] ${
-        selected
-          ? 'bg-[#1E5C14] border-[#1E5C14] text-white shadow-lg'
-          : 'bg-white border-gray-200 text-gray-800 hover:border-[#4A8A1A] hover:bg-green-50'
-      }`}>
-      {icon && <span className="text-2xl shrink-0 leading-none">{icon}</span>}
-      <div className="flex-1 min-w-0">
-        <div className="font-semibold text-base leading-tight">{label}</div>
-        {desc && <div className={`text-xs mt-0.5 ${selected ? 'text-white/75' : 'text-gray-400'}`}>{desc}</div>}
-      </div>
-      {badge && (
-        <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full shrink-0 ${
-          selected ? 'bg-white/25 text-white' : 'bg-[#9EC200] text-white'
-        }`}>{badge}</span>
-      )}
-      {selected && <span className="text-lg shrink-0">✓</span>}
-    </button>
-  )
-}
-
 function QWrap({ children }: { children: React.ReactNode }) {
-  return <div className="px-4 pt-4 pb-2 space-y-3">{children}</div>
+  return <div className="px-4 pt-4 pb-4 space-y-3">{children}</div>
 }
 
 function QTitle({ n, title, sub }: { n: string; title: string; sub?: string }) {
   return (
-    <div className="flex items-start gap-3 mb-4 pt-1">
+    <div className="flex items-start gap-3 mb-5 pt-1">
       <span className="bg-black text-white text-xs w-7 h-7 rounded-full flex items-center justify-center font-bold shrink-0 mt-0.5">{n}</span>
       <div>
         <p className="font-bold text-gray-800 text-base leading-snug">{title}</p>
@@ -174,134 +159,47 @@ function QTitle({ n, title, sub }: { n: string; title: string; sub?: string }) {
   )
 }
 
-// ── Kyushu SVG map ─────────────────────────────────────────────────────
-// viewBox 0 0 305 415  (x:west→east, y:north→south)
-const PREF_PATHS: { id: string; d: string; lx: number; ly: number }[] = [
-  {
-    id: '福岡県',
-    // top, wide — 北九州 bulges NE
-    d: 'M 14,24 L 46,8 L 158,2 L 240,6 L 278,18 L 288,52 L 275,80 L 248,94 L 215,100 L 168,114 L 138,116 L 108,102 L 80,92 L 54,82 L 35,72 L 15,80 Z',
-    lx: 155, ly: 58,
-  },
-  {
-    id: '佐賀県',
-    // NW center, small — between 福岡/長崎/熊本
-    d: 'M 15,80 L 35,72 L 54,82 L 80,92 L 108,102 L 116,126 L 96,152 L 68,162 L 44,155 L 24,138 L 14,118 Z',
-    lx: 58, ly: 116,
-  },
-  {
-    id: '長崎県',
-    // west + 島原半島 jutting east (Ariake Sea bay between peninsula and 熊本)
-    d: 'M 14,118 L 24,138 L 44,155 L 68,162 L 96,152 L 112,162 L 118,182 L 122,202 L 112,222 L 95,232 L 78,220 L 70,232 L 56,222 L 38,234 L 18,238 L 4,220 L 2,194 L 5,162 L 10,138 Z',
-    lx: 36, ly: 178,
-  },
-  {
-    id: '大分県',
-    // NE — irregular east coastline
-    d: 'M 215,100 L 248,94 L 275,80 L 288,52 L 278,18 L 295,42 L 299,82 L 290,120 L 270,150 L 244,162 L 222,166 L 210,142 L 205,120 Z',
-    lx: 258, ly: 110,
-  },
-  {
-    id: '熊本県',
-    // center — west side concave (有明海 bay)
-    d: 'M 108,102 L 138,116 L 168,114 L 215,100 L 205,120 L 210,142 L 222,166 L 218,200 L 208,234 L 186,254 L 158,262 L 128,262 L 100,256 L 80,248 L 74,232 L 82,212 L 88,192 L 92,170 L 96,152 L 116,126 Z',
-    lx: 162, ly: 188,
-  },
-  {
-    id: '宮崎県',
-    // SE — tall, east coast strip
-    d: 'M 222,166 L 244,162 L 270,150 L 282,178 L 275,222 L 260,262 L 248,290 L 234,306 L 220,308 L 205,290 L 198,266 L 200,248 L 208,234 L 218,200 Z',
-    lx: 245, ly: 228,
-  },
-  {
-    id: '鹿児島県',
-    // south — double peninsula (薩摩 + 大隅) with 錦江湾 bay
-    d: 'M 100,256 L 128,262 L 158,262 L 186,254 L 208,234 L 200,248 L 198,266 L 205,290 L 220,308 L 216,334 L 202,348 L 182,355 L 162,330 L 152,362 L 138,362 L 118,354 L 104,330 L 88,358 L 72,348 L 70,322 L 76,298 L 74,270 L 80,248 Z',
-    lx: 150, ly: 300,
-  },
-]
-
-function KyushuMap({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+function NumInput({ value, onChange, unit, hint, min, step, placeholder }: {
+  value: string; onChange: (v: string) => void
+  unit: string; hint?: string; min?: number; step?: number; placeholder?: string
+}) {
   return (
-    <div>
-      <p className="text-xs text-gray-400 text-center mb-1">県をタップして選択</p>
-      <svg viewBox="0 0 305 415" className="w-full" style={{ maxHeight: '340px' }}>
-        {/* sea background */}
-        <rect width="305" height="415" fill="#D6EAF8" rx="8" />
-        {PREF_PATHS.map(p => (
-          <g key={p.id} onClick={() => onChange(p.id)} style={{ cursor: 'pointer' }}>
-            <path
-              d={p.d}
-              fill={value === p.id ? '#1E5C14' : '#C8E6A0'}
-              stroke="#fff"
-              strokeWidth="1.8"
-              opacity={value && value !== p.id ? 0.72 : 1}
-            />
-            <text
-              x={p.lx} y={p.ly}
-              textAnchor="middle" dominantBaseline="middle"
-              fontSize="11" fontWeight="bold"
-              fill={value === p.id ? '#fff' : '#1a4010'}
-              style={{ pointerEvents: 'none', userSelect: 'none' }}
-            >
-              {p.id.replace('県', '')}
-            </text>
-          </g>
-        ))}
-      </svg>
-      <div className="mt-2 text-center min-h-[32px]">
-        {value ? (
-          <span className="inline-block bg-[#1E5C14] text-white text-sm font-bold px-4 py-1.5 rounded-full">
-            ✓ {value}
-          </span>
-        ) : (
-          <span className="text-xs text-gray-300">選択してください</span>
-        )}
+    <div className="bg-gray-50 rounded-2xl px-5 py-5">
+      <div className="flex items-end gap-3">
+        <input
+          type="number"
+          value={value}
+          onChange={e => onChange(e.target.value)}
+          min={min} step={step}
+          placeholder={placeholder}
+          className="flex-1 text-4xl font-bold text-gray-800 bg-transparent border-b-2 border-gray-300 focus:border-[#1E5C14] outline-none pb-1 text-right tabular-nums"
+          style={{ minWidth: 0 }}
+        />
+        <span className="text-lg text-gray-500 pb-1 shrink-0">{unit}</span>
       </div>
+      {hint && <p className="text-xs text-gray-400 mt-3">{hint}</p>}
     </div>
   )
 }
 
-// ── direction compass ──────────────────────────────────────────────────
-const DIR_DATA = [
-  { label: '西',  arrow: '←', col: 'col-start-1' },
-  { label: '南西', arrow: '↙', col: 'col-start-2' },
-  { label: '南',  arrow: '↓', col: 'col-start-3', badge: '最多' },
-  { label: '東南', arrow: '↘', col: 'col-start-4' },
-  { label: '東',  arrow: '→', col: 'col-start-5' },
-]
 
-function DirectionPicker({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+// ── animated chart bar (year chart) ───────────────────────────────────
+function ChartBar({ year, heightPct, isHighFit, animated, delay }: {
+  year: number; heightPct: number; isHighFit: boolean; animated: boolean; delay: number
+}) {
+  const [pct, setPct] = useState(0)
+  useEffect(() => {
+    if (!animated) { setPct(0); return }
+    const t = setTimeout(() => setPct(heightPct), delay)
+    return () => clearTimeout(t)
+  }, [animated, heightPct, delay])
   return (
-    <div>
-      <div className="bg-gray-50 rounded-xl p-3 mb-4 flex items-center justify-center gap-6 text-center">
-        <div className="text-xs text-gray-400 leading-relaxed">屋根が一番<br/>向いている方角</div>
-        <div className="relative w-20 h-20 rounded-full border-2 border-gray-200 bg-white flex items-center justify-center">
-          <span className="text-2xl">🏠</span>
-          <span className="absolute top-0.5 text-[9px] text-gray-400">北</span>
-          <span className="absolute bottom-0.5 text-[9px] text-[#1E5C14] font-bold">南</span>
-          <span className="absolute left-0.5 text-[9px] text-gray-400">西</span>
-          <span className="absolute right-0.5 text-[9px] text-gray-400">東</span>
-        </div>
+    <div className="flex-1 flex flex-col items-center gap-1">
+      <div className="w-full flex items-end" style={{ height: '96px' }}>
+        <div className="w-full rounded-t-sm transition-all duration-700"
+          style={{ height: `${pct}%`, background: isHighFit ? '#2B6CB0' : '#90A8C8', transitionDelay: `${delay}ms` }} />
       </div>
-      <div className="grid grid-cols-5 gap-1.5">
-        {DIR_DATA.map(d => (
-          <button key={d.label} onClick={() => onChange(d.label)}
-            className={`py-3 rounded-xl border-2 text-center transition-all relative active:scale-[0.96] ${
-              value === d.label
-                ? 'bg-[#1E5C14] border-[#1E5C14] text-white shadow-md'
-                : 'bg-white border-gray-200 text-gray-700 hover:border-[#4A8A1A]'
-            }`}>
-            {d.badge && (
-              <span className={`absolute -top-2 left-1/2 -translate-x-1/2 text-[8px] font-bold px-1 py-0.5 rounded-full whitespace-nowrap ${
-                value === d.label ? 'bg-white/25 text-white' : 'bg-[#9EC200] text-white'
-              }`}>{d.badge}</span>
-            )}
-            <div className="text-base leading-none mb-0.5">{d.arrow}</div>
-            <div className="text-xs font-semibold">{d.label}</div>
-          </button>
-        ))}
-      </div>
+      <span className="text-[9px] text-gray-400">{year}年</span>
     </div>
   )
 }
@@ -331,9 +229,7 @@ function BarRow({ label, value, max, color, amount, delay = 0, active }: {
 // ── main app ───────────────────────────────────────────────────────────
 export default function App() {
   const [step, setStep]       = useState<Step>('start')
-  const [answers, setAnswers] = useState<Answers>({
-    area: '', electricBill: '', roofDirection: '南', kw: '6kW', battery: 'なし',
-  })
+  const [answers, setAnswers] = useState<Answers>(DEFAULT_ANSWERS)
   const [animated, setAnimated] = useState(false)
 
   useEffect(() => {
@@ -341,9 +237,7 @@ export default function App() {
     else setAnimated(false)
   }, [step])
 
-  const r = calcResult(answers.area
-    ? answers
-    : { ...answers, area: '福岡県', electricBill: '1.5万円' })
+  const r = calcResult(answers)
 
   const savings30Count = useCountUp(r.savings30, animated)
   const fmt  = (n: number) => `約 ${n.toLocaleString()}円`
@@ -362,14 +256,18 @@ export default function App() {
   const set = (key: keyof Answers) => (v: string) =>
     setAnswers(p => ({ ...p, [key]: v }))
 
+  const reset = () => { setStep('start'); setAnswers(DEFAULT_ANSWERS) }
+
   return (
     <div className="min-h-screen bg-gray-50" style={{ fontFamily: 'system-ui, sans-serif' }}>
 
       {/* ヘッダー */}
-      <header className="bg-white border-b border-gray-100 py-3 px-5 shadow-sm sticky top-0 z-10">
+      <header className="bg-white border-b border-gray-100 py-1 px-5 shadow-sm sticky top-0 z-10">
         <div className="max-w-lg mx-auto flex justify-center">
-          <button onClick={() => { setStep('start'); setAnswers({ area: '', electricBill: '', roofDirection: '南', kw: '6kW', battery: 'なし' }) }}>
-            <img src="/logo.png" alt="株式会社FORLIFE" className="h-8 w-auto" />
+          <button onClick={reset}>
+            <img src="/logo.png" alt="株式会社FORLIFE"
+              className="w-auto"
+              style={{ height: '52px', objectFit: 'cover', objectPosition: 'center', marginTop: '-8px', marginBottom: '-8px' }} />
           </button>
         </div>
       </header>
@@ -382,11 +280,9 @@ export default function App() {
             style={{ backgroundImage: 'repeating-linear-gradient(45deg,#fff 0,#fff 1px,transparent 0,transparent 50%)', backgroundSize: '20px 20px' }} />
           <div className="relative">
             <div className="inline-flex items-center gap-1.5 bg-black/40 text-white text-xs font-bold px-3 py-1 rounded-full mb-3">
-              ☀ 無料シミュレーション
+              太陽光発電シミュレーション
             </div>
             <h1 className="text-2xl font-bold mb-2">電気代、もっと<br />下げられます。</h1>
-            <p className="text-sm opacity-90">太陽光＋蓄電池で月々の光熱費をシミュレーション</p>
-            <p className="text-xs opacity-70 mt-1">5つの質問に答えるだけ・所要1分</p>
           </div>
         </div>
       )}
@@ -395,184 +291,238 @@ export default function App() {
 
         {/* ── スタート ── */}
         {step === 'start' && (
-          <div className="bg-white rounded-2xl shadow-sm mx-4 mt-4 p-6">
+          <div className="bg-white shadow-sm mt-4 p-6">
             <p className="text-sm text-gray-500 leading-relaxed mb-6">
-              お住まいの条件を入力するだけで、太陽光発電・蓄電池を導入した場合の節約額を簡単に試算できます。※試算結果は目安です。地域・日射量・設備仕様により実際の効果は異なります。
+              現在の電気ご利用状況を入力するだけで、30年分の節約額を試算します。<br />※試算結果は目安です。
             </p>
             <button onClick={() => setStep('q1')}
-              className="w-full bg-black hover:bg-gray-800 text-white font-bold py-4 rounded-xl text-base transition-colors shadow">
-              いますぐ試算する →
+              className="w-full text-white font-bold py-4 rounded-xl text-base transition-colors shadow" style={{ background: '#1C3B44' }}>
+              試算を開始する →
             </button>
           </div>
         )}
 
-        {/* ── Q1 エリア ── */}
+        {/* ── Q1 パネル容量 ── */}
         {step === 'q1' && (
           <div className="bg-white rounded-2xl shadow-sm mx-4 mt-4">
             <BackButton onClick={() => setStep('start')} />
             <ProgressBar step="q1" />
             <QWrap>
-              <QTitle n="01" title="お住まいのエリアを選択してください" />
-              <div className="grid grid-cols-2 gap-2">
-                {AREAS.map(a => (
-                  <button key={a} onClick={() => set('area')(a)}
-                    className={`py-3.5 px-3 rounded-xl border-2 text-sm font-semibold transition-all active:scale-[0.97] ${
-                      answers.area === a
-                        ? 'bg-[#1E5C14] border-[#1E5C14] text-white shadow-md'
-                        : 'bg-white border-gray-200 text-gray-700 hover:border-[#4A8A1A]'
-                    }`}>
-                    {answers.area === a ? '✓ ' : ''}{a}
-                  </button>
-                ))}
-              </div>
-              <NextBtn active={!!answers.area} onClick={goNext} />
+              <QTitle n="01" title="パネル容量" sub="実際のシステム容量を入力してください" />
+              <NumInput value={answers.panelKw} onChange={set('panelKw')}
+                unit="kW" min={0} step={0.01} placeholder="例: 5.0"
+                hint="一般的な住宅用は3〜10kW程度です" />
+              <NextBtn active={parseFloat(answers.panelKw) > 0} onClick={goNext} />
             </QWrap>
           </div>
         )}
 
-        {/* ── Q2 電気代 ── */}
+        {/* ── Q2 蓄電池容量 ── */}
         {step === 'q2' && (
           <div className="bg-white rounded-2xl shadow-sm mx-4 mt-4">
             <BackButton onClick={goBack} />
             <ProgressBar step="q2" />
             <QWrap>
-              <QTitle n="02" title="月々の電気代（目安）を教えてください"
-                sub="わからなければ平均的な金額を選んでください" />
-              <BigCard label="1万円前後" desc="〜10,000円/月"
-                selected={answers.electricBill === '1万円'}
-                onClick={() => set('electricBill')('1万円')} />
-              <BigCard label="1.5万円前後" desc="〜15,000円/月"
-                selected={answers.electricBill === '1.5万円'}
-                onClick={() => set('electricBill')('1.5万円')} badge="平均的" />
-              <BigCard label="2万円以上" desc="20,000円〜/月"
-                selected={answers.electricBill === '2万円以上'}
-                onClick={() => set('electricBill')('2万円以上')} />
-              <NextBtn active={!!answers.electricBill} onClick={goNext} />
+              <QTitle n="02" title="蓄電池容量" sub="蓄電池なしの場合は 0 を入力してください" />
+              <NumInput value={answers.batteryKwh} onChange={set('batteryKwh')}
+                unit="kWh" min={0} step={0.1} placeholder="例: 7.0"
+                hint="主流は5〜16kWhです。なしの場合は0" />
+              <NextBtn active={answers.batteryKwh !== '' && parseFloat(answers.batteryKwh) >= 0} onClick={goNext} />
             </QWrap>
           </div>
         )}
 
-        {/* ── Q3 屋根の向き ── */}
+        {/* ── Q3 年間発電量 ── */}
         {step === 'q3' && (
           <div className="bg-white rounded-2xl shadow-sm mx-4 mt-4">
             <BackButton onClick={goBack} />
             <ProgressBar step="q3" />
             <QWrap>
-              <QTitle n="03" title="家（屋根）の向きを選択してください"
-                sub="太陽光パネルを設置する屋根が向いている方角" />
-              <DirectionPicker value={answers.roofDirection} onChange={set('roofDirection')} />
-              <NextBtn active={!!answers.roofDirection} onClick={goNext} />
+              <QTitle n="03" title="年間発電量" sub="見積書や設計書に記載されている予測発電量" />
+              <NumInput value={answers.annualGen} onChange={set('annualGen')}
+                unit="kWh/年" min={0} step={1} placeholder="例: 5500"
+                hint="1kWあたり約1,000〜1,200kWh/年が目安です" />
+              <NextBtn active={parseFloat(answers.annualGen) > 0} onClick={goNext} />
             </QWrap>
           </div>
         )}
 
-        {/* ── Q4 kW ── */}
+        {/* ── Q4 電気代 ── */}
         {step === 'q4' && (
           <div className="bg-white rounded-2xl shadow-sm mx-4 mt-4">
             <BackButton onClick={goBack} />
             <ProgressBar step="q4" />
             <QWrap>
-              <QTitle n="04" title="設置するパネルの規模を選んでください"
-                sub="屋根の広さや家族構成の目安です。迷ったら6kWが標準的です" />
-              <BigCard label="3kW" desc="小さめ｜1〜2人暮らし向け"
-                selected={answers.kw === '3kW'} onClick={() => set('kw')('3kW')} />
-              <BigCard label="6kW" desc="標準｜3〜4人家族向け"
-                selected={answers.kw === '6kW'} onClick={() => set('kw')('6kW')} badge="人気" />
-              <BigCard label="9kW" desc="大きめ｜5人以上・売電重視"
-                selected={answers.kw === '9kW'} onClick={() => set('kw')('9kW')} />
-              <p className="text-xs text-gray-400 pt-1">※10kW以上は全量売電となります</p>
-              <NextBtn active={!!answers.kw} onClick={goNext} />
+              <QTitle n="04" title="お客様の電気代（月）" sub="現在の月々の電気代を入力してください" />
+              <NumInput value={answers.monthlyBill} onChange={set('monthlyBill')}
+                unit="円/月" min={0} step={100} placeholder="例: 12000"
+                hint="直近の電気代明細を参考にしてください" />
+              <NextBtn active={parseFloat(answers.monthlyBill) > 0} onClick={goNext} />
             </QWrap>
           </div>
         )}
 
-        {/* ── Q5 蓄電池 ── */}
+        {/* ── Q5 太陽光自家消費量 ── */}
         {step === 'q5' && (
           <div className="bg-white rounded-2xl shadow-sm mx-4 mt-4">
             <BackButton onClick={goBack} />
             <ProgressBar step="q5" />
             <QWrap>
-              <QTitle n="05" title="蓄電池はご検討ですか？"
-                sub="夜間も自家消費でき節約効果UP。停電時の備えとしても注目されています" />
-              <BigCard label="蓄電池なし" desc="太陽光のみ設置"
-                selected={answers.battery === 'なし'} onClick={() => set('battery')('なし')} />
-              <BigCard label="5kWh" desc="停電対策・基本モデル｜約5時間分"
-                selected={answers.battery === '5kWh'} onClick={() => set('battery')('5kWh')} />
-              <BigCard label="10kWh" desc="バランス型・最も人気｜約10時間分"
-                selected={answers.battery === '10kWh'} onClick={() => set('battery')('10kWh')} badge="人気" />
-              <BigCard label="15kWh" desc="大容量・長期停電にも安心｜約15時間分"
-                selected={answers.battery === '15kWh'} onClick={() => set('battery')('15kWh')} />
-              <NextBtn active={!!answers.battery} onClick={goNext} label="結果を見る 🎉" />
+              <QTitle n="05" title="太陽光自家消費量" sub="太陽光で直接まかなえる月間消費量（デフォルト100kWh）" />
+              <NumInput value={answers.selfConsume} onChange={set('selfConsume')}
+                unit="kWh/月" min={0} step={1} placeholder="100"
+                hint="目安：50〜150kWh/月。特に指定がなければ100のままでOK" />
+              <NextBtn active={parseFloat(answers.selfConsume) >= 0} onClick={goNext} label="結果を見る →" />
             </QWrap>
           </div>
         )}
 
         {/* ── 結果 ── */}
-        {step === 'result' && (
+        {step === 'result' && (() => {
+          const chartRows = r.yearRows.filter(row => row.year <= 10)
+          const maxAnnual = Math.max(...chartRows.map(row => row.annualSaving))
+          return (
           <div className="space-y-4 mx-4 mt-4">
 
-            {/* 30年ヒーロー */}
+            {/* 条件変更ボタン */}
+            <div className="flex justify-end">
+              <button onClick={() => setStep('q1')} className="text-xs text-[#4A8A1A] font-semibold border border-[#4A8A1A] px-3 py-1.5 rounded-lg bg-white">
+                条件を変える
+              </button>
+            </div>
+
+            {/* ① 30年累計ヒーロー */}
             <div className="rounded-2xl overflow-hidden shadow-lg text-white"
               style={{ background: 'linear-gradient(135deg,#8FAA00 0%,#1E5C14 100%)' }}>
               <div className="px-6 pt-7 pb-3 text-center">
                 <p className="text-sm font-medium opacity-90 mb-1">30年間で節約できる金額</p>
                 <p className="text-5xl font-bold tracking-tight my-3 tabular-nums">
-                  {Math.round(savings30Count / 10000).toLocaleString()}<span className="text-2xl font-semibold ml-1">万円</span>
+                  {Math.round(savings30Count / 10000).toLocaleString()}
+                  <span className="text-2xl font-semibold ml-1">万円</span>
                 </p>
-                <p className="text-xs opacity-65">※売電収入（FIT含む）を合わせた30年間の累計試算</p>
+                <p className="text-xs opacity-65">※電気代削減＋売電収入（FIT含む）の30年累計試算</p>
               </div>
-              <div className="grid grid-cols-2 gap-px bg-white/20 mt-3">
-                <div className="bg-white/10 px-4 py-3.5 text-center">
-                  <p className="text-xs opacity-75">月間節約合計</p>
-                  <p className="text-xl font-bold mt-0.5">{fmtM(r.monthlySaving)}</p>
+              <div className="grid grid-cols-3 gap-px bg-white/20 mt-3">
+                <div className="bg-white/10 px-3 py-3 text-center">
+                  <p className="text-[10px] opacity-75">月間節約</p>
+                  <p className="text-base font-bold mt-0.5">約{Math.round(r.monthlySaving / 1000)}千円</p>
                 </div>
-                <div className="bg-white/10 px-4 py-3.5 text-center">
-                  <p className="text-xs opacity-75">初年度 年間節約</p>
-                  <p className="text-xl font-bold mt-0.5">{fmt(r.annualSaving)}</p>
+                <div className="bg-white/10 px-3 py-3 text-center">
+                  <p className="text-[10px] opacity-75">初年度 年間</p>
+                  <p className="text-base font-bold mt-0.5">約{Math.round(r.annualSaving / 10000)}万円</p>
+                </div>
+                <div className="bg-white/10 px-3 py-3 text-center">
+                  <p className="text-[10px] opacity-75">10年累計</p>
+                  <p className="text-base font-bold mt-0.5">約{Math.round(r.yearRows[9].cumTotal / 10000)}万円</p>
                 </div>
               </div>
             </div>
 
-            {/* 電気代比較 */}
+            {/* ② 月間収支内訳 */}
             <div className="bg-white rounded-2xl shadow-sm p-5">
-              <h2 className="text-sm font-bold text-gray-700 mb-4">📊 電気代シミュレーション（月間）</h2>
-              <BarRow label="設置前" value={r.monthlyBill} max={r.monthlyBill}
-                color="bg-gray-400" amount={fmtM(r.monthlyBill)} active={animated} delay={0} />
-              <BarRow label="設置後" value={r.afterBill} max={r.monthlyBill}
-                color="bg-[#1E5C14]" amount={fmtM(r.afterBill)} active={animated} delay={300} />
-              <BarRow label="売電収入" value={r.monthlyIncome} max={r.monthlyBill}
-                color="bg-[#9EC200]" amount={fmtM(r.monthlyIncome)} active={animated} delay={600} />
-              <div className="grid grid-cols-2 gap-3 mt-5">
-                <div className="bg-green-50 rounded-xl p-3 text-center border border-green-100">
+              <h2 className="text-sm font-bold text-gray-700 mb-4">月間の収支内訳</h2>
+              <BarRow label="設置前" value={r.monthlyBillNum} max={r.monthlyBillNum}
+                color="bg-gray-300" amount={fmtM(r.monthlyBillNum)} active={animated} delay={0} />
+              <BarRow label="設置後" value={r.afterBill} max={r.monthlyBillNum}
+                color="bg-[#2B6CB0]" amount={fmtM(r.afterBill)} active={animated} delay={200} />
+              <BarRow label="売電収入" value={r.monthlyIncome} max={r.monthlyBillNum}
+                color="bg-[#E8730A]" amount={fmtM(r.monthlyIncome)} active={animated} delay={400} />
+              <div className="grid grid-cols-2 gap-3 mt-4 pt-4 border-t border-gray-100">
+                <div className="bg-blue-50 rounded-xl p-3 text-center">
                   <p className="text-xs text-gray-500 mb-1">電気代削減（月）</p>
-                  <p className="text-lg font-bold text-[#1E5C14]">{fmtM(r.monthlyReduction)}</p>
+                  <p className="text-lg font-bold text-[#2B6CB0]">{fmtM(r.monthlyReduction)}</p>
                   <p className="text-[10px] text-gray-400 mt-0.5">自家消費 {r.selfTotal}kWh/月</p>
                 </div>
-                <div className="bg-lime-50 rounded-xl p-3 text-center border border-lime-100">
+                <div className="bg-orange-50 rounded-xl p-3 text-center">
                   <p className="text-xs text-gray-500 mb-1">売電収入（月）</p>
-                  <p className="text-lg font-bold text-[#4A8A1A]">{fmtM(r.monthlyIncome)}</p>
-                  <p className="text-[10px] text-gray-400 mt-0.5">FIT単価 {FIT_1_4}円/kWh</p>
+                  <p className="text-lg font-bold text-[#E8730A]">{fmtM(r.monthlyIncome)}</p>
+                  <p className="text-[10px] text-gray-400 mt-0.5">売電 {Math.round(r.monthlySell)}kWh/月</p>
                 </div>
               </div>
             </div>
 
-            {/* 入力内容サマリー */}
-            <div className="bg-white rounded-2xl shadow-sm p-4">
-              <div className="flex items-center justify-between mb-3">
-                <h3 className="text-sm font-bold text-gray-700">📋 あなたの入力内容</h3>
-                <button onClick={() => setStep('q1')}
-                  className="text-xs text-[#4A8A1A] font-semibold hover:underline">
-                  条件を変える
-                </button>
+            {/* ③ 年間節約額グラフ（1〜10年目） */}
+            <div className="bg-white rounded-2xl shadow-sm p-5">
+              <h2 className="text-sm font-bold text-gray-700 mb-1">年間節約額の推移</h2>
+              <p className="text-xs text-gray-400 mb-4">FIT単価の変化により4年目以降は変動します</p>
+              <div className="flex gap-4 mb-3 justify-end">
+                <div className="flex items-center gap-1.5 text-[10px] text-gray-500">
+                  <span className="w-3 h-3 rounded-sm inline-block" style={{ background: '#2B6CB0' }} />
+                  FIT期間（1〜4年目）
+                </div>
+                <div className="flex items-center gap-1.5 text-[10px] text-gray-500">
+                  <span className="w-3 h-3 rounded-sm inline-block" style={{ background: '#90A8C8' }} />
+                  卒FIT期（5年目〜）
+                </div>
               </div>
+              <div className="flex items-end gap-1.5" style={{ height: '120px' }}>
+                {chartRows.map((row, i) => (
+                  <ChartBar key={row.year}
+                    year={row.year}
+                    heightPct={maxAnnual > 0 ? (row.annualSaving / maxAnnual) * 100 : 0}
+                    isHighFit={row.year <= 4}
+                    animated={animated}
+                    delay={i * 80}
+                  />
+                ))}
+              </div>
+            </div>
+
+            {/* ④ 年別累積テーブル */}
+            <div className="bg-white rounded-2xl shadow-sm overflow-hidden">
+              <div className="px-5 py-4 border-b border-gray-100">
+                <h2 className="text-sm font-bold text-gray-700">累積節約額シミュレーション</h2>
+              </div>
+              <div className="overflow-x-auto">
+                <table className="w-full text-xs">
+                  <thead>
+                    <tr className="bg-gray-50 text-gray-500">
+                      <th className="px-3 py-2.5 text-left font-medium">年目</th>
+                      <th className="px-3 py-2.5 text-right font-medium">電気代削減</th>
+                      <th className="px-3 py-2.5 text-right font-medium">売電収入</th>
+                      <th className="px-3 py-2.5 text-right font-medium text-[#1E5C14]">累積合計</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {r.yearRows.map((row, i) => {
+                      const isHighlight = row.year === 10 || row.year === 20 || row.year === 30
+                      return (
+                        <tr key={row.year}
+                          className={`border-t border-gray-50 ${isHighlight ? 'bg-green-50' : i % 2 === 0 ? 'bg-white' : 'bg-gray-50/50'}`}>
+                          <td className={`px-3 py-2.5 font-semibold ${isHighlight ? 'text-[#1E5C14]' : 'text-gray-600'}`}>
+                            {row.year}年目
+                          </td>
+                          <td className="px-3 py-2.5 text-right text-gray-600 tabular-nums">
+                            {Math.round(row.cumReduction / 10000)}万円
+                          </td>
+                          <td className="px-3 py-2.5 text-right text-gray-600 tabular-nums">
+                            {Math.round(row.cumSell / 10000)}万円
+                          </td>
+                          <td className={`px-3 py-2.5 text-right font-bold tabular-nums ${isHighlight ? 'text-[#1E5C14]' : 'text-gray-700'}`}>
+                            {Math.round(row.cumTotal / 10000)}万円
+                          </td>
+                        </tr>
+                      )
+                    })}
+                  </tbody>
+                </table>
+              </div>
+              <div className="px-4 py-3 bg-gray-50 border-t border-gray-100">
+                <p className="text-[10px] text-gray-400">※地域・日射量・設備仕様により実際の効果は異なります</p>
+              </div>
+            </div>
+
+            {/* ⑤ 入力内容サマリー */}
+            <div className="bg-white rounded-2xl shadow-sm p-4">
+              <h3 className="text-sm font-bold text-gray-700 mb-3">入力内容</h3>
               <div className="grid grid-cols-2 gap-2 text-xs">
                 {[
-                  ['エリア', answers.area],
-                  ['電気代', answers.electricBill + '/月'],
-                  ['屋根の向き', answers.roofDirection],
-                  ['パネル容量', answers.kw],
-                  ['蓄電池', answers.battery],
-                  ['年間発電量', `約 ${r.annualGen.toLocaleString()} kWh`],
+                  ['パネル容量', `${answers.panelKw} kW`],
+                  ['蓄電池容量', `${answers.batteryKwh} kWh`],
+                  ['年間発電量', `${parseInt(answers.annualGen).toLocaleString()} kWh`],
+                  ['電気代', `${parseInt(answers.monthlyBill).toLocaleString()} 円/月`],
+                  ['太陽光自家消費', `${answers.selfConsume} kWh/月`],
+                  ['月間売電量', `約 ${Math.round(r.monthlySell)} kWh`],
                 ].map(([label, value]) => (
                   <div key={label} className="bg-gray-50 rounded-lg px-3 py-2">
                     <p className="text-gray-400">{label}</p>
@@ -582,36 +532,24 @@ export default function App() {
               </div>
             </div>
 
-            {/* 試算根拠 */}
-            <details className="bg-white rounded-2xl shadow-sm p-4">
-              <summary className="text-xs text-gray-400 cursor-pointer hover:text-gray-600 select-none">
-                試算の根拠を見る ▾
-              </summary>
-              <div className="mt-3 bg-gray-50 rounded-lg p-3 space-y-1 text-xs text-gray-500">
-                <p>エリア係数：{AREA_FACTOR[answers.area]} ／ 向き係数：{DIRECTION_FACTOR[answers.roofDirection]}</p>
-                <p>自家消費：太陽光 100kWh ＋ 蓄電池 {BATTERY_KWH[answers.battery] * 30}kWh ＝ {r.selfTotal}kWh/月</p>
-                <p>買電単価：{BUY_PRICE}円/kWh</p>
-                <p>売電単価：年1〜4年目 {FIT_1_4}円 ／ 年5〜10年目 {FIT_5_10}円 ／ 年11〜30年目 {FIT_11_30}円</p>
-              </div>
-            </details>
-
-            {/* CTA */}
+            {/* ⑦ CTA */}
             <div className="bg-white rounded-2xl shadow-sm p-5 text-center">
               <p className="text-sm text-gray-600 mb-1 font-semibold">
                 あなたの家に合った正確な金額を無料でご提案
               </p>
               <p className="text-xs text-gray-400 mb-4">専門スタッフが現地調査のうえ、設置費用・回収期間まで丁寧にご説明します</p>
-              <button className="w-full bg-black hover:bg-gray-800 text-white font-bold py-4 rounded-xl text-base transition-colors shadow-md">
+              <button className="w-full text-white font-bold py-4 rounded-xl text-base transition-colors shadow-md" style={{ background: '#1C3B44' }}>
                 無料で詳しく試算してもらう →
               </button>
             </div>
 
-            <button onClick={() => { setStep('q1'); setAnswers({ area: '', electricBill: '', roofDirection: '南', kw: '6kW', battery: 'なし' }) }}
+            <button onClick={reset}
               className="w-full text-sm text-gray-400 hover:text-gray-600 py-2 text-center">
               ← もう一度入力し直す
             </button>
           </div>
-        )}
+          )
+        })()}
       </main>
 
       <footer className="bg-[#3D3D3D] text-white mt-6 py-8 px-5 text-center">
