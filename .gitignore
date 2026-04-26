@@ -1,0 +1,7 @@
+node_modules/
+dist/
+*.xlsx
+*.xlsm
+~$*
+.DS_Store
+*.log

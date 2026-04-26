@@ -1,21 +1,17 @@
 import { useState, useEffect } from 'react'
 
-type Step = 'start' | 'q1' | 'q2' | 'q3' | 'q4' | 'q5' | 'result'
+type Step = 'start' | 'q1' | 'q2' | 'q3' | 'result'
 
 interface Answers {
   panelKw: string
   batteryKwh: string
-  annualGen: string
   monthlyBill: string
-  selfConsume: string
 }
 
 const DEFAULT_ANSWERS: Answers = {
   panelKw: '',
   batteryKwh: '',
-  annualGen: '',
   monthlyBill: '',
-  selfConsume: '100',
 }
 
 const BUY_PRICE = 30
@@ -42,14 +38,20 @@ interface CalcResult {
 function calcResult(answers: Answers): CalcResult {
   const monthlyBillNum = parseFloat(answers.monthlyBill) || 14000
   const batteryKwhNum  = parseFloat(answers.batteryKwh)  || 0
-  const annualGenNum   = parseFloat(answers.annualGen)   || 8862
-  const selfConsumeNum = parseFloat(answers.selfConsume) || 100
+  const selfConsumeNum = 100
 
-  const monthlyGen       = annualGenNum / 12
-  const selfTotal        = selfConsumeNum + batteryKwhNum * 30
-  const monthlyReduction = Math.round(selfTotal * BUY_PRICE)
-  const afterBill        = Math.max(monthlyBillNum - monthlyReduction, 0)
-  const monthlySell      = Math.max(monthlyGen - selfTotal, 0)
+  const annualGenNum = parseFloat(answers.panelKw) * 1100
+  const monthlyGen   = annualGenNum / 12
+
+  const daytimeSelfUse   = Math.min(selfConsumeNum, monthlyGen)
+  const surplus          = Math.max(0, monthlyGen - daytimeSelfUse)
+  const batterySelfUse   = Math.min(batteryKwhNum * 30, surplus)
+  const selfTotal        = daytimeSelfUse + batterySelfUse
+  const monthlySell      = monthlyGen - selfTotal
+
+  const BASE_FEE         = 1500
+  const monthlyReduction = Math.round(Math.min(selfTotal * BUY_PRICE, monthlyBillNum - BASE_FEE))
+  const afterBill        = Math.max(monthlyBillNum - monthlyReduction, BASE_FEE)
   const monthlyIncome    = Math.round(monthlySell * FIT_1_4)
 
   const cumSell = (yr: number) =>
@@ -99,7 +101,7 @@ function useCountUp(target: number, active: boolean, duration = 1800) {
 }
 
 // ── small components ───────────────────────────────────────────────────
-const Q_STEPS: Step[] = ['q1', 'q2', 'q3', 'q4', 'q5']
+const Q_STEPS: Step[] = ['q1', 'q2', 'q3']
 
 function ProgressBar({ step }: { step: Step }) {
   const idx = Q_STEPS.indexOf(step)
@@ -265,7 +267,7 @@ export default function App() {
       <header className="bg-white border-b border-gray-100 py-1 px-5 shadow-sm sticky top-0 z-10">
         <div className="max-w-lg mx-auto flex justify-center">
           <button onClick={reset}>
-            <img src="/logo.png" alt="株式会社FORLIFE"
+            <img src={`${import.meta.env.BASE_URL}logo.png`} alt="株式会社FORLIFE"
               className="w-auto"
               style={{ height: '52px', objectFit: 'cover', objectPosition: 'center', marginTop: '-8px', marginBottom: '-8px' }} />
           </button>
@@ -282,7 +284,8 @@ export default function App() {
             <div className="inline-flex items-center gap-1.5 bg-black/40 text-white text-xs font-bold px-3 py-1 rounded-full mb-3">
               太陽光発電シミュレーション
             </div>
-            <h1 className="text-2xl font-bold mb-2">電気代、もっと<br />下げられます。</h1>
+            <h1 className="text-2xl font-bold mb-2">太陽光で<br />こんなに変わる電気代。</h1>
+            <p className="text-sm opacity-80 mt-2">3項目・約1分で完了</p>
           </div>
         </div>
       )}
@@ -308,11 +311,21 @@ export default function App() {
             <BackButton onClick={() => setStep('start')} />
             <ProgressBar step="q1" />
             <QWrap>
-              <QTitle n="01" title="パネル容量" sub="実際のシステム容量を入力してください" />
-              <NumInput value={answers.panelKw} onChange={set('panelKw')}
-                unit="kW" min={0} step={0.01} placeholder="例: 5.0"
-                hint="一般的な住宅用は3〜10kW程度です" />
-              <NextBtn active={parseFloat(answers.panelKw) > 0} onClick={goNext} />
+              <QTitle n="01" title="パネル容量" sub="設置するシステムの容量を選んでください" />
+              <div className="grid grid-cols-3 gap-2">
+                {['3kW', '4kW', '5kW', '6kW', '8kW', '10kW'].map(v => (
+                  <button key={v} onClick={() => set('panelKw')(v)}
+                    className={`py-4 rounded-xl border-2 font-bold text-base transition-all active:scale-[0.97] ${
+                      answers.panelKw === v
+                        ? 'border-[#1C3B44] text-white'
+                        : 'bg-white border-gray-200 text-gray-700 hover:border-[#1C3B44]'
+                    }`}
+                    style={answers.panelKw === v ? { background: '#1C3B44' } : {}}>
+                    {v}
+                  </button>
+                ))}
+              </div>
+              <NextBtn active={!!answers.panelKw} onClick={goNext} />
             </QWrap>
           </div>
         )}
@@ -323,59 +336,42 @@ export default function App() {
             <BackButton onClick={goBack} />
             <ProgressBar step="q2" />
             <QWrap>
-              <QTitle n="02" title="蓄電池容量" sub="蓄電池なしの場合は 0 を入力してください" />
-              <NumInput value={answers.batteryKwh} onChange={set('batteryKwh')}
-                unit="kWh" min={0} step={0.1} placeholder="例: 7.0"
-                hint="主流は5〜16kWhです。なしの場合は0" />
-              <NextBtn active={answers.batteryKwh !== '' && parseFloat(answers.batteryKwh) >= 0} onClick={goNext} />
+              <QTitle n="02" title="蓄電池容量" sub="設置する蓄電池の容量を選んでください" />
+              <div className="grid grid-cols-3 gap-2">
+                {['なし', '5kWh', '7kWh', '10kWh', '12kWh', '15kWh'].map(v => {
+                  const val = v === 'なし' ? '0' : v.replace('kWh', '')
+                  const selected = answers.batteryKwh === val
+                  return (
+                    <button key={v} onClick={() => set('batteryKwh')(val)}
+                      className={`py-4 rounded-xl border-2 font-bold text-base transition-all active:scale-[0.97] ${
+                        selected ? 'border-[#1C3B44] text-white' : 'bg-white border-gray-200 text-gray-700 hover:border-[#1C3B44]'
+                      }`}
+                      style={selected ? { background: '#1C3B44' } : {}}>
+                      {v}
+                    </button>
+                  )
+                })}
+              </div>
+              <NextBtn active={answers.batteryKwh !== ''} onClick={goNext} />
             </QWrap>
           </div>
         )}
 
-        {/* ── Q3 年間発電量 ── */}
+        {/* ── Q3 電気代 ── */}
         {step === 'q3' && (
           <div className="bg-white rounded-2xl shadow-sm mx-4 mt-4">
             <BackButton onClick={goBack} />
             <ProgressBar step="q3" />
             <QWrap>
-              <QTitle n="03" title="年間発電量" sub="見積書や設計書に記載されている予測発電量" />
-              <NumInput value={answers.annualGen} onChange={set('annualGen')}
-                unit="kWh/年" min={0} step={1} placeholder="例: 5500"
-                hint="1kWあたり約1,000〜1,200kWh/年が目安です" />
-              <NextBtn active={parseFloat(answers.annualGen) > 0} onClick={goNext} />
-            </QWrap>
-          </div>
-        )}
-
-        {/* ── Q4 電気代 ── */}
-        {step === 'q4' && (
-          <div className="bg-white rounded-2xl shadow-sm mx-4 mt-4">
-            <BackButton onClick={goBack} />
-            <ProgressBar step="q4" />
-            <QWrap>
-              <QTitle n="04" title="お客様の電気代（月）" sub="現在の月々の電気代を入力してください" />
+              <QTitle n="03" title="お客様の電気代（月）" sub="現在の月々の電気代を入力してください" />
               <NumInput value={answers.monthlyBill} onChange={set('monthlyBill')}
                 unit="円/月" min={0} step={100} placeholder="例: 12000"
                 hint="直近の電気代明細を参考にしてください" />
-              <NextBtn active={parseFloat(answers.monthlyBill) > 0} onClick={goNext} />
+              <NextBtn active={parseFloat(answers.monthlyBill) > 0} onClick={goNext} label="結果を見る →" />
             </QWrap>
           </div>
         )}
 
-        {/* ── Q5 太陽光自家消費量 ── */}
-        {step === 'q5' && (
-          <div className="bg-white rounded-2xl shadow-sm mx-4 mt-4">
-            <BackButton onClick={goBack} />
-            <ProgressBar step="q5" />
-            <QWrap>
-              <QTitle n="05" title="太陽光自家消費量" sub="太陽光で直接まかなえる月間消費量（デフォルト100kWh）" />
-              <NumInput value={answers.selfConsume} onChange={set('selfConsume')}
-                unit="kWh/月" min={0} step={1} placeholder="100"
-                hint="目安：50〜150kWh/月。特に指定がなければ100のままでOK" />
-              <NextBtn active={parseFloat(answers.selfConsume) >= 0} onClick={goNext} label="結果を見る →" />
-            </QWrap>
-          </div>
-        )}
 
         {/* ── 結果 ── */}
         {step === 'result' && (() => {
@@ -519,9 +515,8 @@ export default function App() {
                 {[
                   ['パネル容量', `${answers.panelKw} kW`],
                   ['蓄電池容量', `${answers.batteryKwh} kWh`],
-                  ['年間発電量', `${parseInt(answers.annualGen).toLocaleString()} kWh`],
+                  ['年間発電量', `${Math.round(r.annualGenNum).toLocaleString()} kWh`],
                   ['電気代', `${parseInt(answers.monthlyBill).toLocaleString()} 円/月`],
-                  ['太陽光自家消費', `${answers.selfConsume} kWh/月`],
                   ['月間売電量', `約 ${Math.round(r.monthlySell)} kWh`],
                 ].map(([label, value]) => (
                   <div key={label} className="bg-gray-50 rounded-lg px-3 py-2">
@@ -532,15 +527,37 @@ export default function App() {
               </div>
             </div>
 
-            {/* ⑦ CTA */}
-            <div className="bg-white rounded-2xl shadow-sm p-5 text-center">
-              <p className="text-sm text-gray-600 mb-1 font-semibold">
-                あなたの家に合った正確な金額を無料でご提案
-              </p>
-              <p className="text-xs text-gray-400 mb-4">専門スタッフが現地調査のうえ、設置費用・回収期間まで丁寧にご説明します</p>
-              <button className="w-full text-white font-bold py-4 rounded-xl text-base transition-colors shadow-md" style={{ background: '#1C3B44' }}>
-                無料で詳しく試算してもらう →
-              </button>
+            {/* ⑦ CTA + お問い合わせ */}
+            <div className="rounded-2xl overflow-hidden shadow-sm" style={{ background: 'linear-gradient(135deg,#4A8A1A,#1E5C14)' }}>
+              <div className="p-5">
+                <p className="text-sm text-white/90 mb-1 font-semibold text-center">
+                  あなたの家に合った正確な金額を無料でご提案
+                </p>
+                <p className="text-xs text-white/65 mb-5 text-center">専門スタッフが現地調査のうえ、設置費用・回収期間まで丁寧にご説明します</p>
+
+                <p className="text-sm font-bold text-white mb-2">▼ メールでのお問い合わせ</p>
+                <a href="https://forlife04.jp/contact/" target="_blank" rel="noopener noreferrer"
+                  className="flex items-center justify-between w-full bg-black text-white font-bold py-4 px-5 rounded-xl mb-6 active:opacity-80">
+                  <span className="text-base">お問い合わせ</span>
+                  <span className="text-xl">→</span>
+                </a>
+
+                <p className="text-sm font-bold text-white mb-2">▼ LINEでのお問い合わせ</p>
+                <a href="https://line.me/ti/p/XXXXXXXX" target="_blank" rel="noopener noreferrer"
+                  className="flex items-center justify-between w-full font-bold py-4 px-5 rounded-xl mb-6 active:opacity-90"
+                  style={{ background: '#06C755' }}>
+                  <span className="text-base text-white">LINEで相談する</span>
+                  <span className="text-xl text-white">→</span>
+                </a>
+
+                <p className="text-sm font-bold text-white mb-1">▼ お電話でのお問い合わせ</p>
+                <p className="text-xs text-white/75 mb-2">平日 9:00〜18:00</p>
+                <a href="tel:0925558828"
+                  className="flex items-center justify-between w-full bg-black text-white font-bold py-4 px-5 rounded-xl active:opacity-80">
+                  <span className="text-xl">TEL.092-555-8828</span>
+                  <span className="text-xl">→</span>
+                </a>
+              </div>
             </div>
 
             <button onClick={reset}
@@ -555,7 +572,7 @@ export default function App() {
       <footer className="bg-[#3D3D3D] text-white mt-6 py-8 px-5 text-center">
         <div className="max-w-lg mx-auto">
           <a href="https://forlife04.jp" target="_blank" rel="noopener noreferrer">
-            <img src="/logo.png" alt="株式会社FORLIFE" className="h-8 w-auto mx-auto brightness-0 invert mb-3" />
+            <img src={`${import.meta.env.BASE_URL}logo.png`} alt="株式会社FORLIFE" className="h-8 w-auto mx-auto brightness-0 invert mb-3" />
           </a>
           <p className="text-xs text-gray-400">太陽光発電・蓄電池・EV充電設備・電気工事</p>
           <p className="text-xs text-gray-500 mt-1">福岡県大野城市仲畑3丁目2-10 / 東京都西東京市中町2丁目4-1</p>
