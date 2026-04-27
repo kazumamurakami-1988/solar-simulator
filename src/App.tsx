@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import logoUrl from './assets/logo_starttop.webp'
 
 type Step = 'start' | 'q1' | 'q2' | 'q3' | 'result'
 
@@ -115,7 +116,7 @@ function ProgressBar({ step }: { step: Step }) {
       </div>
       <div className="w-full bg-gray-200 rounded-full h-1.5">
         <div className="h-1.5 rounded-full transition-all duration-500"
-          style={{ width: `${pct}%`, background: 'linear-gradient(90deg,#8FAA00,#1E5C14)' }} />
+          style={{ width: `${pct}%`, background: 'linear-gradient(90deg,#FBC10B,#FBA30B)' }} />
       </div>
     </div>
   )
@@ -137,7 +138,7 @@ function NextBtn({ active, onClick, label = '次へ →' }: {
     <button onClick={onClick} disabled={!active}
       className={`w-full py-4 rounded-xl font-bold text-base transition-all mt-5 ${
         active
-          ? 'text-white shadow-md active:scale-[0.98] bg-[#1C3B44] hover:bg-[#162e35]'
+          ? 'text-gray-900 shadow-md active:scale-[0.98] bg-[#FBA30B] hover:bg-[#e8960a]'
           : 'bg-gray-100 text-gray-300 cursor-not-allowed'
       }`}>
       {label}
@@ -174,7 +175,7 @@ function NumInput({ value, onChange, unit, hint, min, step, placeholder }: {
           onChange={e => onChange(e.target.value)}
           min={min} step={step}
           placeholder={placeholder}
-          className="flex-1 text-4xl font-bold text-gray-800 bg-transparent border-b-2 border-gray-300 focus:border-[#1E5C14] outline-none pb-1 text-right tabular-nums"
+          className="flex-1 text-4xl font-bold text-gray-800 bg-transparent border-b-2 border-gray-300 focus:border-[#FBA30B] outline-none pb-1 text-right tabular-nums"
           style={{ minWidth: 0 }}
         />
         <span className="text-lg text-gray-500 pb-1 shrink-0">{unit}</span>
@@ -242,7 +243,6 @@ export default function App() {
   const r = calcResult(answers)
 
   const savings30Count = useCountUp(r.savings30, animated)
-  const fmt  = (n: number) => `約 ${n.toLocaleString()}円`
   const fmtM = (n: number) => `約 ${n.toLocaleString()}円/月`
 
   const goBack = () => {
@@ -266,10 +266,10 @@ export default function App() {
       {/* ヘッダー */}
       <header className="bg-white border-b border-gray-100 py-1 px-5 shadow-sm sticky top-0 z-10">
         <div className="max-w-lg mx-auto flex justify-center">
-          <button onClick={reset}>
-            <img src={`${import.meta.env.BASE_URL}logo.png`} alt="株式会社FORLIFE"
+          <button onClick={reset} style={{ marginRight: '40px' }}>
+            <img src={logoUrl} alt="株式会社FOR STYLE"
               className="w-auto"
-              style={{ height: '52px', objectFit: 'cover', objectPosition: 'center', marginTop: '-8px', marginBottom: '-8px' }} />
+              style={{ height: '36px', objectFit: 'contain' }} />
           </button>
         </div>
       </header>
@@ -277,7 +277,7 @@ export default function App() {
       {/* ヒーロー（スタートのみ） */}
       {step === 'start' && (
         <div className="text-white py-10 px-5 text-center relative overflow-hidden"
-          style={{ background: 'linear-gradient(135deg,#8FAA00 0%,#4A8A1A 50%,#1E5C14 100%)' }}>
+          style={{ background: 'linear-gradient(135deg,#FBC10B 0%,#FBA30B 50%,#F08000 100%)' }}>
           <div className="absolute inset-0 opacity-10"
             style={{ backgroundImage: 'repeating-linear-gradient(45deg,#fff 0,#fff 1px,transparent 0,transparent 50%)', backgroundSize: '20px 20px' }} />
           <div className="relative">
@@ -299,7 +299,7 @@ export default function App() {
               現在の電気ご利用状況を入力するだけで、30年分の節約額を試算します。<br />※試算結果は目安です。
             </p>
             <button onClick={() => setStep('q1')}
-              className="w-full text-white font-bold py-4 rounded-xl text-base transition-colors shadow" style={{ background: '#1C3B44' }}>
+              className="w-full text-gray-900 font-bold py-4 rounded-xl text-base transition-colors shadow" style={{ background: '#FBA30B' }}>
               試算を開始する →
             </button>
           </div>
@@ -317,10 +317,10 @@ export default function App() {
                   <button key={v} onClick={() => set('panelKw')(v)}
                     className={`py-4 rounded-xl border-2 font-bold text-base transition-all active:scale-[0.97] ${
                       answers.panelKw === v
-                        ? 'border-[#1C3B44] text-white'
-                        : 'bg-white border-gray-200 text-gray-700 hover:border-[#1C3B44]'
+                        ? 'border-[#FBA30B] text-gray-900'
+                        : 'bg-white border-gray-200 text-gray-700 hover:border-[#FBA30B]'
                     }`}
-                    style={answers.panelKw === v ? { background: '#1C3B44' } : {}}>
+                    style={answers.panelKw === v ? { background: '#FBA30B' } : {}}>
                     {v}
                   </button>
                 ))}
@@ -344,9 +344,9 @@ export default function App() {
                   return (
                     <button key={v} onClick={() => set('batteryKwh')(val)}
                       className={`py-4 rounded-xl border-2 font-bold text-base transition-all active:scale-[0.97] ${
-                        selected ? 'border-[#1C3B44] text-white' : 'bg-white border-gray-200 text-gray-700 hover:border-[#1C3B44]'
+                        selected ? 'border-[#FBA30B] text-gray-900' : 'bg-white border-gray-200 text-gray-700 hover:border-[#FBA30B]'
                       }`}
-                      style={selected ? { background: '#1C3B44' } : {}}>
+                      style={selected ? { background: '#FBA30B' } : {}}>
                       {v}
                     </button>
                   )
@@ -382,14 +382,14 @@ export default function App() {
 
             {/* 条件変更ボタン */}
             <div className="flex justify-end">
-              <button onClick={() => setStep('q1')} className="text-xs text-[#4A8A1A] font-semibold border border-[#4A8A1A] px-3 py-1.5 rounded-lg bg-white">
+              <button onClick={() => setStep('q1')} className="text-xs text-[#FBA30B] font-semibold border border-[#FBA30B] px-3 py-1.5 rounded-lg bg-white">
                 条件を変える
               </button>
             </div>
 
             {/* ① 30年累計ヒーロー */}
             <div className="rounded-2xl overflow-hidden shadow-lg text-white"
-              style={{ background: 'linear-gradient(135deg,#8FAA00 0%,#1E5C14 100%)' }}>
+              style={{ background: 'linear-gradient(135deg,#FBC10B 0%,#FBA30B 100%)' }}>
               <div className="px-6 pt-7 pb-3 text-center">
                 <p className="text-sm font-medium opacity-90 mb-1">30年間で節約できる金額</p>
                 <p className="text-5xl font-bold tracking-tight my-3 tabular-nums">
@@ -476,7 +476,7 @@ export default function App() {
                       <th className="px-3 py-2.5 text-left font-medium">年目</th>
                       <th className="px-3 py-2.5 text-right font-medium">電気代削減</th>
                       <th className="px-3 py-2.5 text-right font-medium">売電収入</th>
-                      <th className="px-3 py-2.5 text-right font-medium text-[#1E5C14]">累積合計</th>
+                      <th className="px-3 py-2.5 text-right font-medium text-[#F08000]">累積合計</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -484,8 +484,8 @@ export default function App() {
                       const isHighlight = row.year === 10 || row.year === 20 || row.year === 30
                       return (
                         <tr key={row.year}
-                          className={`border-t border-gray-50 ${isHighlight ? 'bg-green-50' : i % 2 === 0 ? 'bg-white' : 'bg-gray-50/50'}`}>
-                          <td className={`px-3 py-2.5 font-semibold ${isHighlight ? 'text-[#1E5C14]' : 'text-gray-600'}`}>
+                          className={`border-t border-gray-50 ${isHighlight ? 'bg-amber-50' : i % 2 === 0 ? 'bg-white' : 'bg-gray-50/50'}`}>
+                          <td className={`px-3 py-2.5 font-semibold ${isHighlight ? 'text-[#F08000]' : 'text-gray-600'}`}>
                             {row.year}年目
                           </td>
                           <td className="px-3 py-2.5 text-right text-gray-600 tabular-nums">
@@ -494,7 +494,7 @@ export default function App() {
                           <td className="px-3 py-2.5 text-right text-gray-600 tabular-nums">
                             {Math.round(row.cumSell / 10000)}万円
                           </td>
-                          <td className={`px-3 py-2.5 text-right font-bold tabular-nums ${isHighlight ? 'text-[#1E5C14]' : 'text-gray-700'}`}>
+                          <td className={`px-3 py-2.5 text-right font-bold tabular-nums ${isHighlight ? 'text-[#F08000]' : 'text-gray-700'}`}>
                             {Math.round(row.cumTotal / 10000)}万円
                           </td>
                         </tr>
@@ -528,33 +528,33 @@ export default function App() {
             </div>
 
             {/* ⑦ CTA + お問い合わせ */}
-            <div className="rounded-2xl overflow-hidden shadow-sm" style={{ background: 'linear-gradient(135deg,#4A8A1A,#1E5C14)' }}>
+            <div className="rounded-2xl overflow-hidden shadow-sm" style={{ background: 'linear-gradient(135deg,#FBC10B,#FBA30B)' }}>
               <div className="p-5">
-                <p className="text-sm text-white/90 mb-1 font-semibold text-center">
+                <p className="text-sm text-gray-900/90 mb-1 font-semibold text-center">
                   あなたの家に合った正確な金額を無料でご提案
                 </p>
-                <p className="text-xs text-white/65 mb-5 text-center">専門スタッフが現地調査のうえ、設置費用・回収期間まで丁寧にご説明します</p>
+                <p className="text-xs text-gray-900/65 mb-5 text-center">専門スタッフが現地調査のうえ、設置費用・回収期間まで丁寧にご説明します</p>
 
-                <p className="text-sm font-bold text-white mb-2">▼ メールでのお問い合わせ</p>
-                <a href="https://forlife04.jp/contact/" target="_blank" rel="noopener noreferrer"
-                  className="flex items-center justify-between w-full bg-black text-white font-bold py-4 px-5 rounded-xl mb-6 active:opacity-80">
-                  <span className="text-base">お問い合わせ</span>
-                  <span className="text-xl">→</span>
-                </a>
-
-                <p className="text-sm font-bold text-white mb-2">▼ LINEでのお問い合わせ</p>
-                <a href="https://line.me/ti/p/XXXXXXXX" target="_blank" rel="noopener noreferrer"
+                <p className="text-sm font-bold text-gray-900 mb-2">▼ LINEでのお問い合わせ</p>
+                <a href="https://line.me/R/ti/p/@241mpxyj?oat_content=qr#~" target="_blank" rel="noopener noreferrer"
                   className="flex items-center justify-between w-full font-bold py-4 px-5 rounded-xl mb-6 active:opacity-90"
                   style={{ background: '#06C755' }}>
                   <span className="text-base text-white">LINEで相談する</span>
                   <span className="text-xl text-white">→</span>
                 </a>
 
-                <p className="text-sm font-bold text-white mb-1">▼ お電話でのお問い合わせ</p>
-                <p className="text-xs text-white/75 mb-2">平日 9:00〜18:00</p>
-                <a href="tel:0925558828"
+                <p className="text-sm font-bold text-gray-900 mb-2">▼ メールでのお問い合わせ</p>
+                <a href="https://starttop.jp/contact/" target="_blank" rel="noopener noreferrer"
+                  className="flex items-center justify-between w-full bg-black text-white font-bold py-4 px-5 rounded-xl mb-6 active:opacity-80">
+                  <span className="text-base">お問い合わせ</span>
+                  <span className="text-xl">→</span>
+                </a>
+
+                <p className="text-sm font-bold text-gray-900 mb-1">▼ お電話でのお問い合わせ</p>
+                <p className="text-xs text-gray-900/75 mb-2">平日 9:00〜18:00</p>
+                <a href="tel:0925866188"
                   className="flex items-center justify-between w-full bg-black text-white font-bold py-4 px-5 rounded-xl active:opacity-80">
-                  <span className="text-xl">TEL.092-555-8828</span>
+                  <span className="text-xl">TEL.092-586-6188</span>
                   <span className="text-xl">→</span>
                 </a>
               </div>
@@ -571,12 +571,12 @@ export default function App() {
 
       <footer className="bg-[#3D3D3D] text-white mt-6 py-8 px-5 text-center">
         <div className="max-w-lg mx-auto">
-          <a href="https://forlife04.jp" target="_blank" rel="noopener noreferrer">
-            <img src={`${import.meta.env.BASE_URL}logo.png`} alt="株式会社FORLIFE" className="h-8 w-auto mx-auto brightness-0 invert mb-3" />
+          <a href="https://starttop.jp" target="_blank" rel="noopener noreferrer">
+            <img src={logoUrl} alt="株式会社FOR STYLE" className="h-8 w-auto mx-auto brightness-0 invert mb-3" />
           </a>
-          <p className="text-xs text-gray-400">太陽光発電・蓄電池・EV充電設備・電気工事</p>
-          <p className="text-xs text-gray-500 mt-1">福岡県大野城市仲畑3丁目2-10 / 東京都西東京市中町2丁目4-1</p>
-          <p className="text-xs text-gray-600 mt-3">© 2025 株式会社FORLIFE</p>
+          <p className="text-xs text-gray-400">太陽光発電・蓄電池・V2H・オール電化・メンテナンス・リフォーム</p>
+          <p className="text-xs text-gray-500 mt-1">〒816-0921 福岡県大野城市仲畑3丁目2-10</p>
+          <p className="text-xs text-gray-600 mt-3">© 2025 株式会社FOR STYLE</p>
         </div>
       </footer>
     </div>
